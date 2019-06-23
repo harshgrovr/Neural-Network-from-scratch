@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+import random
 
 def build_Model(feature_set,hidden_nodes,output_label=2):
 
@@ -70,33 +70,48 @@ def backprogation(feature_set, zh1, ah1, zh2, ah2, zo, ao, one_hot_vector, wo, w
     dcost_dbh1 = dah1_dzh1 * dcost_ah1
     return dcost_dwh1, dcost_wh2, dcost_dwo, dcost_dbh1, dcost_dbh2, dcost_bo
 
-def calculate_loss(feature_set, one_hot_vector, ao):
+def calculate_loss(feature_set, batchy, ao):
     num_example = feature_set.shape[0]
-    loss = np.sum(-one_hot_vector * np.log(ao))
+    loss = np.sum(-batchy * np.log(ao))
+    #print(loss)
+    #print(num_example)
     return 1. / num_example * loss
+
 
 
 def train(model, feature_set, one_hot_vector, epochs, lr):
     losses = []
+    lossHistory = []
+    batchsize =5
     previous_loss =float('inf')
     wo = model['wo']
     wh2 = model['wh2']
-    for epoch in range(epochs-1):
+    for epoch in range(epochs):
+        epochLoss = []
         #feed forward
-        zh1,ah1,zh2,ah2,zo,ao= feed_forward(model, feature_set)
-        #backprogation
-        dcost_dwh1, dcost_wh2, dcost_dwo, dcost_dbh1, dcost_dbh2, dcost_bo = backprogation(feature_set,zh1,ah1,zh2,ah2,zo,zo,one_hot_vector, wo, wh2)
-        #update weights and biases
-        model['wh1'] -= lr * dcost_dwh1
-        model['wh2'] -= lr * dcost_wh2
-        model['wo'] -= lr * dcost_dwo
-        model['bh1'] -= lr * np.sum(dcost_dbh1, axis=0)
-        model['bh2'] -= lr * np.sum(dcost_dbh2, axis=0)
-        model['bo'] -= lr * np.sum(dcost_bo, axis=0)
+        # trying SGD
+        random_int = np.random.randint(0, feature_set.shape[0]-10)
+        XX = np.array([feature_set[random_int: random_int+5]])
+        YY = np.array([one_hot_vector[random_int: random_int+5]])
+       # print(XX, YY)
+        for batchX, batchY in zip(XX, YY):
+            zh1,ah1,zh2,ah2,zo,ao= feed_forward(model, batchX)
+            #backprogation
+            dcost_dwh1, dcost_wh2, dcost_dwo, dcost_dbh1, dcost_dbh2, dcost_bo = backprogation(batchX,zh1,ah1,zh2,ah2,zo,zo,batchY, wo, wh2)
+            #update weights and biases
+            model['wh1'] -= lr * dcost_dwh1
+            model['wh2'] -= lr * dcost_wh2
+            model['wo'] -= lr * dcost_dwo
+            model['bh1'] -= lr * np.sum(dcost_dbh1, axis=0)
+            model['bh2'] -= lr * np.sum(dcost_dbh2, axis=0)
+            model['bo'] -= lr * np.sum(dcost_bo, axis=0)
         if(epoch % 500 == 0):
-            loss=calculate_loss(feature_set,one_hot_vector,ao)
+            loss=calculate_loss(feature_set,batchY,ao)
             print(epoch)
+         #   epochLoss.append(loss)
             print('Loss function value: ', loss)
+       # if(epochLoss is not None):
+         #  lossHistory.append(np.average(epochLoss))
 
 
 def accuracy(match, model, result, feature_set, one_hot_vector):
@@ -152,11 +167,17 @@ def main():
     one_hot_vector = np.array(one_hot_vector)
     model = build_Model(feature_set,hidden_nodes,output_node)
     try:
-        model, losses= train(model, feature_set, one_hot_vector, 50000,lr=0.0001)
+        model, losses = train(model, feature_set, one_hot_vector, 50000, lr=0.0001)
+        accuracy(0,model,[],feature_set,one_hot_vector)
     except:
-        print('An exception occured')
+        print('exception occured')
 
-    accuracy(0,model,[],feature_set,one_hot_vector)
+    try:
+        accuracy(0, model, [], feature_set, one_hot_vector)
+    except:
+        print('exception occured')
+
+    #accuracy(0,model,[],feature_set,one_hot_vector)
 
 if __name__ == "__main__":
     main()
