@@ -1,6 +1,13 @@
+import sys
+
 import numpy as np
 import pandas as pd
 import random
+
+import matplotlib.pyplot as plt
+from bokeh.plotting import figure
+from bokeh.io import output_notebook, push_notebook, show
+
 
 def build_Model(feature_set,hidden_nodes,output_label=2):
 
@@ -70,30 +77,31 @@ def backprogation(feature_set, zh1, ah1, zh2, ah2, zo, ao, one_hot_vector, wo, w
     dcost_dbh1 = dah1_dzh1 * dcost_ah1
     return dcost_dwh1, dcost_wh2, dcost_dwo, dcost_dbh1, dcost_dbh2, dcost_bo
 
-def calculate_loss(feature_set, batchy, ao):
-    num_example = feature_set.shape[0]
+def calculate_loss(batchX, batchy, ao, model):
+    zh1,ah1,zh2,ah2,zo,ao= feed_forward(model, batchX)
+    num_example = batchX.shape[0]
     loss = np.sum(-batchy * np.log(ao))
-    #print(loss)
-    #print(num_example)
     return 1. / num_example * loss
 
 
 
-def train(model, feature_set, one_hot_vector, epochs, lr):
+def train(model, feature_set, one_hot_vector, training_data_x, training_data_y, validation_data_x, validation_data_y, epochs, lr, batchsize):
     losses = []
-    lossHistory = []
-    batchsize =5
-    previous_loss =float('inf')
+    flag = 0
+    validatinLossHistory = []
+    validationAccuracyHistory = []
+    trainingAccuracyHistory = []
     wo = model['wo']
     wh2 = model['wh2']
     for epoch in range(epochs):
+        if(flag == 1):
+            break;
         epochLoss = []
         #feed forward
         # trying SGD
-        random_int = np.random.randint(0, feature_set.shape[0]-10)
-        XX = np.array([feature_set[random_int: random_int+5]])
-        YY = np.array([one_hot_vector[random_int: random_int+5]])
-       # print(XX, YY)
+        random_int = np.random.randint(0, feature_set.shape[0]-batchsize)
+        XX = np.array([feature_set[random_int: random_int+batchsize]])
+        YY = np.array([one_hot_vector[random_int: random_int+batchsize]])
         for batchX, batchY in zip(XX, YY):
             zh1,ah1,zh2,ah2,zo,ao= feed_forward(model, batchX)
             #backprogation
@@ -105,19 +113,23 @@ def train(model, feature_set, one_hot_vector, epochs, lr):
             model['bh1'] -= lr * np.sum(dcost_dbh1, axis=0)
             model['bh2'] -= lr * np.sum(dcost_dbh2, axis=0)
             model['bo'] -= lr * np.sum(dcost_bo, axis=0)
-        if(epoch % 500 == 0):
-            loss=calculate_loss(feature_set,batchY,ao)
+        if(epoch % 250 == 0):
             print(epoch)
-         #   epochLoss.append(loss)
-            print('Loss function value: ', loss)
-       # if(epochLoss is not None):
-         #  lossHistory.append(np.average(epochLoss))
-
+            epoch+=1
+            loss=calculate_loss(validation_data_x,validation_data_y,ao,model)
+            validatinLossHistory.append(loss)
+            trainingAccuracyHistory.append([accuracy(0, model, [], batchX, batchY), epoch])
+            validationAccuracyHistory.append([accuracy(0, model, [], validation_data_x, validation_data_y), epoch])
+            if (validatinLossHistory.__len__() > 15):
+                if(all(i <=loss for i in validatinLossHistory[-15:])):
+                    flag=1
+                    break
+    return model,trainingAccuracyHistory, validationAccuracyHistory
 
 def accuracy(match, model, result, feature_set, one_hot_vector):
     wh1,bh1,wh2,bh2,bo,wo = model['wh1'], model['bh1'], model['wh2'], model['bh2'], model['bo'], model['wo']
     num_of_data = feature_set.shape[0]
-    for i in range(num_of_data-1):
+    for i in range(num_of_data):
         # Phase 1 feedforward
         zh1 = np.dot(feature_set, wh1) + bh1
         ah1 = sigmoid(zh1)
@@ -134,16 +146,26 @@ def accuracy(match, model, result, feature_set, one_hot_vector):
         else:
             result.append([0, 1])
 
-    for i in range(num_of_data-1):
+    for i in range(num_of_data):
         if(np.array_equal(result[i],one_hot_vector[i])):
             match += 1
-    print(match)
-    print('accuracy is', match/(num_of_data-1))
+    return match/(num_of_data)
+
+
+def divide_dataset(feature_set, one_hot_vector):
+    train = int(feature_set.shape[0] * 0.95)
+    val = feature_set.shape[0] - train
+    training_data_x = np.array(feature_set[0: train])
+    training_data_y = np.array(one_hot_vector[0: train])
+    validation_data_x = np.array(feature_set[train: train+val])
+    validation_data_y = np.array(one_hot_vector[train: train+val])
+    return training_data_x, training_data_y, validation_data_x, validation_data_y
 
 
 
 def main():
     error_cost = []
+    t = 100000
     hidden_nodes = 5
     output_node =2
     np.random.seed(42)
@@ -166,18 +188,36 @@ def main():
             one_hot_vector.append([0, 1])
     one_hot_vector = np.array(one_hot_vector)
     model = build_Model(feature_set,hidden_nodes,output_node)
-    try:
-        model, losses = train(model, feature_set, one_hot_vector, 50000, lr=0.0001)
-        accuracy(0,model,[],feature_set,one_hot_vector)
-    except:
-        print('exception occured')
 
-    try:
-        accuracy(0, model, [], feature_set, one_hot_vector)
-    except:
-        print('exception occured')
 
-    #accuracy(0,model,[],feature_set,one_hot_vector)
+    # divide the dataset
+    training_data_x, training_data_y, validation_data_x, validation_data_y = divide_dataset(feature_set,one_hot_vector)
+    model, trainingAccuracyHistory, validationAccuracyHistory = train(model, training_data_x, training_data_y,training_data_x, training_data_y, validation_data_x, validation_data_y, 100000, lr=5/t, batchsize= 50)
+
+
+    p = figure(plot_width=400, plot_height=400)
+    p.xaxis.axis_label = 'Accuracy'
+    p.yaxis.axis_label = 'Epochs'
+    print(np.array(trainingAccuracyHistory), np.array(validationAccuracyHistory))
+    x=[]
+    y=[]
+    for i in trainingAccuracyHistory:
+        x = i[0]
+        y = i[1]
+
+        p.circle(x, y, size=5, color="navy", alpha=0.5, legend="training_accuracy")
+
+    x = []
+    y = []
+    for i in validationAccuracyHistory:
+        x = i[0]
+        y = i[1]
+        p.circle(x, y, size=5, color="green", alpha=0.5, legend="validation accuracy")
+    show(p)
 
 if __name__ == "__main__":
     main()
+
+
+
+
