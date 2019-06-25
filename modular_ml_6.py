@@ -124,7 +124,7 @@ def train(model, feature_set, one_hot_vector, training_data_x, training_data_y, 
                 if(all(i <=loss for i in validatinLossHistory[-15:])):
                     flag=1
                     break
-    return model,trainingAccuracyHistory, validationAccuracyHistory
+    return model,trainingAccuracyHistory, validatinLossHistory[-1:], validationAccuracyHistory
 
 def accuracy(match, model, result, feature_set, one_hot_vector):
     wh1,bh1,wh2,bh2,bo,wo = model['wh1'], model['bh1'], model['wh2'], model['bh2'], model['bo'], model['wo']
@@ -161,10 +161,74 @@ def divide_dataset(feature_set, one_hot_vector):
     validation_data_y = np.array(one_hot_vector[train: train+val])
     return training_data_x, training_data_y, validation_data_x, validation_data_y
 
+def accuracy_on_test_set(model):
+    #test data accuracy
+    types_dict = {'height': float, 'weight': float, 'gender': int}
+    df = pd.read_csv('DWH_test.csv', dtype=types_dict)
+    if (df.columns.size > 3):
+        df = df.drop([df.columns[0]], axis=1)
+    df.columns = ['height', 'weight', 'gender', 'w']
+    df = df.replace(-1, 0)
+    # normalize data b/w 0 and 1
+    df['height'] = (df['height'] - np.min(df['height'])) / (np.max(df['height']) - np.min(df['height']))
+    df['weight'] = (df['weight'] - np.min(df['weight'])) / (np.max(df['weight']) - np.min(df['weight']))
+
+    feature_set = np.array([[df['height'][j + 1], df['weight'][j + 1]] for j in range(df.__len__() - 1)])
+    y = np.array([[df['gender'][j + 1] for j in range(df.__len__() - 1)]])
+    one_hot_vector = []
+    for i in range(df.__len__() - 1):
+        if (y[0][i] == 1):
+            one_hot_vector.append([1, 0])
+        else:
+            one_hot_vector.append([0, 1])
+    one_hot_vector = np.array(one_hot_vector)
+
+    print(accuracy(0, model, [], feature_set, one_hot_vector))
+
+def graph_validation_error_learningRate(last_validation_errors, learning_rate):
+    #draw graph of question_3_a
+    p = figure(plot_width=400, plot_height=400)
+    p.yaxis.axis_label = 'Learning Rate'
+    p.xaxis.axis_label = 'Validation Error'
+    x=[]
+    y=[]
+
+    for x,y in zip(last_validation_errors,learning_rate):
+        p.circle(x[0], y, size=5, color="navy", alpha=0.5, legend="")
+
+    show(p)
+
+
+def graph_traAcc_Validation_iteration(trainingAccuracyHistory,validationAccuracyHistory):
+
+    # draw graph of question_2
+    p = figure(plot_width=400, plot_height=400)
+    p.xaxis.axis_label = 'Accuracy'
+    p.yaxis.axis_label = 'Epochs'
+    print(np.array(trainingAccuracyHistory), np.array(validationAccuracyHistory))
+    x=[]
+    y=[]
+
+    for i in trainingAccuracyHistory:
+        x = i[0]
+        y = i[1]
+
+        p.circle(x, y, size=5, color="navy", alpha=0.5, legend="training_accuracy")
+
+    x = []
+    y = []
+    for i in validationAccuracyHistory:
+
+        x = i[0]
+        y = i[1]
+        p.circle(x, y, size=5, color="green", alpha=0.5, legend="validation accuracy")
+    show(p)
 
 
 def main():
     error_cost = []
+    saved_models = []
+    last_validation_errors = []
     t = 100000
     hidden_nodes = 5
     output_node =2
@@ -191,32 +255,35 @@ def main():
 
 
     # divide the dataset
+    lr = 1/100000
     training_data_x, training_data_y, validation_data_x, validation_data_y = divide_dataset(feature_set,one_hot_vector)
-    model, trainingAccuracyHistory, validationAccuracyHistory = train(model, training_data_x, training_data_y,training_data_x, training_data_y, validation_data_x, validation_data_y, 100000, lr=5/t, batchsize= 50)
+    # plot question 3 graph
+    model, trainingAccuracyHistory, demo, validationAccuracyHistory = train(model, training_data_x, training_data_y,
+                                                                      training_data_x, training_data_y,
+                                                                      validation_data_x, validation_data_y, 100000, lr,
+                                                                          batchsize=50)
+    print(validationAccuracyHistory)
+    graph_traAcc_Validation_iteration(trainingAccuracyHistory, validationAccuracyHistory)
+    # generate 10 learning rate
+    learning_rate = np.random.uniform(1/t, 10/t, 10)
 
+    for lr in learning_rate:
+        model, trainingAccuracyHistory, validationAccuracyHistory, demo = train(model, training_data_x, training_data_y,training_data_x, training_data_y, validation_data_x, validation_data_y, 100000, lr, batchsize= 50)
+        last_validation_errors.append(validationAccuracyHistory)
+        saved_models.append(model)
 
-    p = figure(plot_width=400, plot_height=400)
-    p.xaxis.axis_label = 'Accuracy'
-    p.yaxis.axis_label = 'Epochs'
-    print(np.array(trainingAccuracyHistory), np.array(validationAccuracyHistory))
-    x=[]
-    y=[]
-    for i in trainingAccuracyHistory:
-        x = i[0]
-        y = i[1]
+    graph_validation_error_learningRate(last_validation_errors, learning_rate)
 
-        p.circle(x, y, size=5, color="navy", alpha=0.5, legend="training_accuracy")
+    arr = np.array(last_validation_errors[0])
+    min_val_error_index = np.where(arr == np.min(arr))
+    model = saved_models[min_val_error_index[0][0]]
+    print('accuracy on test for best learning rate and weights is',  accuracy_on_test_set(model))
 
-    x = []
-    y = []
-    for i in validationAccuracyHistory:
-        x = i[0]
-        y = i[1]
-        p.circle(x, y, size=5, color="green", alpha=0.5, legend="validation accuracy")
-    show(p)
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
